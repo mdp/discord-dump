@@ -88,6 +88,9 @@ async function fetchMessages(
     process.stderr.write(`  fetched ${messages.length}/${limit} messages\r`);
 
     if (page.length < batch) break;
+
+    // Proactive throttle: Discord allows ~5 req/5s per channel route
+    await sleep(1_000);
   }
 
   process.stderr.write("\n");
