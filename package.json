@@ -1,13 +1,28 @@
 {
-  "name": "discord-dump",
+  "name": "@mdp/discord-dump",
   "version": "1.0.0",
+  "description": "CLI to export messages from a Discord channel as JSON or markdown",
   "type": "module",
+  "bin": {
+    "discord-dump": "./dist/exporter.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "dump": "tsx exporter.ts"
+    "build": "tsup",
+    "dev": "tsx exporter.ts",
+    "test": "vitest run",
+    "prepublishOnly": "npm run build"
   },
   "devDependencies": {
     "@types/node": "^25.7.0",
+    "tsup": "^8.5.1",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.3"
+    "typescript": "^5.7.3",
+    "vitest": "^4.1.6"
   }
 }

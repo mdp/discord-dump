@@ -1,11 +1,13 @@
-# discord-dump
+# @mdp/discord-dump
 
-Minimal TypeScript CLI to export messages from a Discord channel.
+[![CI](https://github.com/mdp/discord-dump/actions/workflows/ci.yml/badge.svg)](https://github.com/mdp/discord-dump/actions/workflows/ci.yml)
+
+Minimal CLI to export messages from a Discord channel as JSON or markdown.
 
 ## Usage
 
 ```bash
-DISCORD_TOKEN=<token> npx tsx exporter.ts [--text] <channelId> [limit] [output]
+DISCORD_TOKEN=<token> npx @mdp/discord-dump [--text] <channelId> [limit] [output]
 ```
 
 | Argument | Default | Description |
@@ -22,16 +24,16 @@ DISCORD_TOKEN=<token> npx tsx exporter.ts [--text] <channelId> [limit] [output]
 
 ```bash
 # JSON to stdout
-DISCORD_TOKEN="Bot xxx" npx tsx exporter.ts 1068636749414281270
+DISCORD_TOKEN="Bot xxx" npx @mdp/discord-dump YOUR_CHANNEL_ID
 
 # Last 100 messages as markdown, copied to clipboard
-DISCORD_TOKEN="Bot xxx" npx tsx exporter.ts --text 1068636749414281270 100 | pbcopy
+DISCORD_TOKEN="Bot xxx" npx @mdp/discord-dump --text YOUR_CHANNEL_ID 100 | pbcopy
 
 # Save 500 messages as JSON
-DISCORD_TOKEN="Bot xxx" npx tsx exporter.ts 1068636749414281270 500 messages.json
+DISCORD_TOKEN="Bot xxx" npx @mdp/discord-dump YOUR_CHANNEL_ID 500 messages.json
 
 # Save 500 messages as markdown
-DISCORD_TOKEN="Bot xxx" npx tsx exporter.ts --text 1068636749414281270 500 messages.md
+DISCORD_TOKEN="Bot xxx" npx @mdp/discord-dump --text YOUR_CHANNEL_ID 500 messages.md
 ```
 
 ## Token
@@ -53,14 +55,6 @@ Reply text
 📎 [image.png](https://cdn.discordapp.com/...)
 ❤️ 3  👍 5
 ```
-
-## Setup
-
-```bash
-npm install
-```
-
-Requires Node 18+ (uses native `fetch`).
 
 ## Rate limiting
 
