@@ -1,6 +1,6 @@
 {
   "name": "@mdp/discord-dump",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "CLI to export messages from a Discord channel as JSON or markdown",
   "type": "module",
   "bin": {
