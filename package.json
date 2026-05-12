@@ -1,0 +1,13 @@
+{
+  "name": "discord-dump",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dump": "tsx exporter.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}
