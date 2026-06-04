@@ -1,0 +1,22 @@
+{
+  "source": "cline-account",
+  "version": "org-01K1XZSGQV6H6BPKCP7R8M4KTK",
+  "remoteConfig": {
+    "version": "v1",
+    "providerSettings": {},
+    "telemetryEnabled": true,
+    "mcpMarketplaceEnabled": true,
+    "yoloModeAllowed": true
+  },
+  "metadata": {
+    "paths": {
+      "pluginName": "enterprise",
+      "pluginPath": "/home/mdp/Sync/src/mdp/discord-dump/.cline/enterprise",
+      "workflowsPath": "/home/mdp/Sync/src/mdp/discord-dump/.cline/enterprise/workflows",
+      "skillsPath": "/home/mdp/Sync/src/mdp/discord-dump/.cline/enterprise/skills",
+      "bundleCachePath": "/home/mdp/Sync/src/mdp/discord-dump/.cline/enterprise/cache/bundle.json",
+      "manifestPath": "/home/mdp/Sync/src/mdp/discord-dump/.cline/enterprise/managed.json",
+      "rulesFilePath": "/home/mdp/Sync/src/mdp/discord-dump/.cline/enterprise/rules.md"
+    }
+  }
+}

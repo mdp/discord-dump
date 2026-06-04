@@ -1,137 +1,152 @@
 /**
- * Discord channel exporter — fetches the last N messages from a channel.
+ * Discord exploration CLI.
  *
  * Usage:
- *   DISCORD_TOKEN=<token> tsx exporter.ts [--text] <channelId> [limit] [output.json]
- *
- * Flags:
- *   --text   Output markdown-formatted text instead of JSON
- *
- * Examples:
- *   DISCORD_TOKEN=Bot.xxx tsx exporter.ts YOUR_CHANNEL_ID 500
- *   DISCORD_TOKEN=Bot.xxx tsx exporter.ts --text YOUR_CHANNEL_ID 500 | pbcopy
- *   DISCORD_TOKEN=Bot.xxx tsx exporter.ts YOUR_CHANNEL_ID 500 messages.json
+ *   DISCORD_TOKEN=<token> discord-dump list-guilds
+ *   DISCORD_TOKEN=<token> discord-dump list-channels <guildId>
+ *   DISCORD_TOKEN=<token> discord-dump get-channel <channelId>
+ *   DISCORD_TOKEN=<token> discord-dump dump-channel [--text] <channelId> [limit] [output]
+ *   DISCORD_TOKEN=<token> discord-dump [--text] <channelId> [limit] [output]
  */
 
 import fs from "fs";
-import { type DiscordMessage, formatMarkdown } from "./lib.js";
+import {
+  fetchChannel,
+  fetchGuildChannels,
+  fetchGuilds,
+  fetchMessages,
+  formatMarkdown,
+  summarizeChannels,
+  type DiscordMessage,
+} from "./lib.js";
 
-const API = "https://discord.com/api/v10";
+const commands = new Set(["list-guilds", "list-channels", "get-channel", "dump-channel"]);
 
-// ── HTTP client with rate-limit handling ───────────────────────────────────
+export type CliCommand = "list-guilds" | "list-channels" | "get-channel" | "dump-channel";
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+export interface ParsedArgs {
+  command: CliCommand;
+  textMode: boolean;
+  channelId?: string;
+  guildId?: string;
+  limit: number;
+  outputFile?: string;
+  legacy: boolean;
 }
 
-async function apiGet(
-  path: string,
-  token: string,
-  attempt = 0
-): Promise<unknown> {
-  const res = await fetch(`${API}${path}`, {
-    headers: {
-      Authorization: token,
-      "User-Agent": "discord-dump/1.0 (github.com/mdp/discord-dump)",
-    },
+function usage(): string {
+  return [
+    "Usage:",
+    "  DISCORD_TOKEN=<token> discord-dump list-guilds",
+    "  DISCORD_TOKEN=<token> discord-dump list-channels <guildId>",
+    "  DISCORD_TOKEN=<token> discord-dump get-channel <channelId>",
+    "  DISCORD_TOKEN=<token> discord-dump dump-channel [--text] <channelId> [limit] [output]",
+    "  DISCORD_TOKEN=<token> discord-dump [--text] <channelId> [limit] [output]",
+  ].join("\n");
+}
+
+export function parseArgs(argv: string[]): ParsedArgs {
+  const textMode = argv.includes("--text");
+  const positional = argv.filter((arg) => !arg.startsWith("--"));
+  const command = commands.has(positional[0]) ? positional[0] as CliCommand : "dump-channel";
+  const legacy = command === "dump-channel" && positional[0] !== "dump-channel";
+  const commandOffset = legacy ? 0 : 1;
+
+  if (command === "list-guilds") {
+    return { command, textMode: false, limit: 500, legacy: false };
+  }
+
+  if (command === "list-channels") {
+    const guildId = positional[commandOffset];
+    if (!guildId) throw new Error(`Missing guildId\n\n${usage()}`);
+    return { command, textMode: false, guildId, limit: 500, legacy: false };
+  }
+
+  if (command === "get-channel") {
+    const channelId = positional[commandOffset];
+    if (!channelId) throw new Error(`Missing channelId\n\n${usage()}`);
+    return { command, textMode: false, channelId, limit: 500, legacy: false };
+  }
+
+  const channelId = positional[commandOffset];
+  if (!channelId) throw new Error(usage());
+
+  const limitArg = positional[commandOffset + 1];
+  const limit = parseInt(limitArg ?? "500", 10);
+  if (!Number.isFinite(limit) || limit <= 0) {
+    throw new Error("limit must be a positive integer");
+  }
+
+  return {
+    command,
+    textMode,
+    channelId,
+    limit,
+    outputFile: positional[commandOffset + 2],
+    legacy,
+  };
+}
+
+function writeOutput(output: string, outputFile?: string): void {
+  if (outputFile) {
+    fs.writeFileSync(outputFile, output, "utf8");
+    console.error(`Wrote to ${outputFile}`);
+  } else {
+    console.log(output);
+  }
+}
+
+function json(data: unknown): string {
+  return JSON.stringify(data, null, 2);
+}
+
+async function dumpChannel(parsed: ParsedArgs, token: string): Promise<void> {
+  const channelId = parsed.channelId;
+  if (!channelId) throw new Error("Missing channelId");
+
+  console.error(`Fetching last ${parsed.limit} messages from channel ${channelId}...`);
+  const messages: DiscordMessage[] = await fetchMessages(channelId, token, parsed.limit, {
+    onProgress: (fetched, limit) => process.stderr.write(`  fetched ${fetched}/${limit} messages\r`),
   });
-
-  if (res.status === 429) {
-    const retryAfter = parseFloat(res.headers.get("Retry-After") ?? "1");
-    const delay = (retryAfter + 1) * 1000;
-    console.error(`  [429] rate limited, retrying in ${retryAfter + 1}s…`);
-    await sleep(delay);
-    if (attempt < 8) return apiGet(path, token, attempt + 1);
-    throw new Error("Exceeded max retries on 429");
-  }
-
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Discord API ${res.status}: ${body}`);
-  }
-
-  const remaining = parseInt(res.headers.get("X-RateLimit-Remaining") ?? "1");
-  const resetAfter = parseFloat(res.headers.get("X-RateLimit-Reset-After") ?? "0");
-  if (remaining <= 0 && resetAfter > 0) {
-    const delay = Math.min((resetAfter + 1) * 1000, 60_000);
-    console.error(`  [ratelimit] bucket empty, waiting ${resetAfter + 1}s…`);
-    await sleep(delay);
-  }
-
-  return res.json();
-}
-
-// ── Pagination ─────────────────────────────────────────────────────────────
-
-async function fetchMessages(
-  channelId: string,
-  token: string,
-  limit: number
-): Promise<DiscordMessage[]> {
-  const messages: DiscordMessage[] = [];
-  let before: string | null = null;
-
-  while (messages.length < limit) {
-    const batch = Math.min(100, limit - messages.length);
-    const qs = before ? `?limit=${batch}&before=${before}` : `?limit=${batch}`;
-
-    const page = (await apiGet(
-      `/channels/${channelId}/messages${qs}`,
-      token
-    )) as DiscordMessage[];
-
-    if (page.length === 0) break;
-
-    messages.push(...page);
-    before = page[page.length - 1].id;
-
-    process.stderr.write(`  fetched ${messages.length}/${limit} messages\r`);
-
-    if (page.length < batch) break;
-
-    // Proactive throttle: Discord allows ~5 req/5s per channel route
-    await sleep(1_000);
-  }
-
   process.stderr.write("\n");
+  console.error(`Done - ${messages.length} messages`);
 
-  // Discord returns newest-first per page; reverse so result is oldest-first
-  return messages.reverse();
+  writeOutput(
+    parsed.textMode ? formatMarkdown(messages) : json(messages),
+    parsed.outputFile
+  );
 }
 
-// ── Entry point ────────────────────────────────────────────────────────────
+export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env): Promise<void> {
+  const parsed = parseArgs(argv);
+  const token = env.DISCORD_TOKEN;
+  if (!token) throw new Error("DISCORD_TOKEN env var is required");
 
-const args = process.argv.slice(2);
-const textMode = args.includes("--text");
-const positional = args.filter((a) => !a.startsWith("--"));
-const [channelId, limitArg, outputFile] = positional;
+  if (parsed.command === "list-guilds") {
+    writeOutput(json(await fetchGuilds(token)));
+    return;
+  }
 
-if (!channelId) {
-  console.error("Usage: DISCORD_TOKEN=<token> npx @mdp/discord-dump [--text] <channelId> [limit] [output.json]");
-  process.exit(1);
+  if (parsed.command === "list-channels") {
+    const guildId = parsed.guildId;
+    if (!guildId) throw new Error("Missing guildId");
+    writeOutput(json(summarizeChannels(await fetchGuildChannels(guildId, token))));
+    return;
+  }
+
+  if (parsed.command === "get-channel") {
+    const channelId = parsed.channelId;
+    if (!channelId) throw new Error("Missing channelId");
+    writeOutput(json(await fetchChannel(channelId, token)));
+    return;
+  }
+
+  await dumpChannel(parsed, token);
 }
 
-const token = process.env.DISCORD_TOKEN;
-if (!token) {
-  console.error("DISCORD_TOKEN env var is required");
-  process.exit(1);
-}
-
-const limit = parseInt(limitArg ?? "500", 10);
-
-console.error(`Fetching last ${limit} messages from channel ${channelId}…`);
-
-const messages = await fetchMessages(channelId, token, limit);
-
-console.error(`Done — ${messages.length} messages`);
-
-const output = textMode
-  ? formatMarkdown(messages)
-  : JSON.stringify(messages, null, 2);
-
-if (outputFile) {
-  fs.writeFileSync(outputFile, output, "utf8");
-  console.error(`Wrote to ${outputFile}`);
-} else {
-  console.log(output);
+if (import.meta.url === `file://${process.argv[1]}`) {
+  run(process.argv.slice(2)).catch((error: unknown) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
 }
