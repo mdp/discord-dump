@@ -8,7 +8,7 @@
   },
   "files": [
     "dist",
-    "SKILL.md"
+    "skills"
   ],
   "repository": {
     "type": "git",
