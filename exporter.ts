@@ -10,6 +10,7 @@
  */
 
 import fs from "fs";
+import { fileURLToPath } from "url";
 import {
   fetchChannel,
   fetchGuildChannels,
@@ -144,7 +145,7 @@ export async function run(argv: string[], env: NodeJS.ProcessEnv = process.env):
   await dumpChannel(parsed, token);
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1])) {
   run(process.argv.slice(2)).catch((error: unknown) => {
     console.error(error instanceof Error ? error.message : String(error));
     process.exit(1);
